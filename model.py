@@ -6,14 +6,14 @@ filter_config = [8, 12, 16, 24]
 
 
 @tf.keras.utils.register_keras_serializable()
-class SEBlock_two_stage(layers.Layer):
+class CSA_Channel(layers.Layer):
     """
-    Squeeze-and-Excitation Block for two parallel input streams.
+    CSA_Channel Block for two parallel input streams.
     It learns channel-wise attention weights by considering both streams.
     """
 
     def __init__(self, channels, reduction=16, **kwargs):
-        super(SEBlock_two_stage, self).__init__(**kwargs)
+        super(CSA_Channel, self).__init__(**kwargs)
         self.channels = channels
         self.reduction = reduction
         self.global_avg_pool = layers.GlobalAvgPool1D()
@@ -41,20 +41,20 @@ class SEBlock_two_stage(layers.Layer):
         return output1, output2
 
     def get_config(self):
-        config = super(SEBlock_two_stage, self).get_config()
+        config = super(CSA_Channel, self).get_config()
         config.update({"channels": self.channels, "reduction": self.reduction})
         return config
 
 
 @tf.keras.utils.register_keras_serializable()
-class SEBlock_seq_two_stage(layers.Layer):
+class CSA_Temporal(layers.Layer):
     """
-    Squeeze-and-Excitation Block focusing on the sequence dimension for two streams.
+    CSA_Temporal Block focusing on the sequence dimension for two streams.
     It learns to re-weight the importance of different time steps.
     """
 
     def __init__(self, seq1, seq2, reduction=16, **kwargs):
-        super(SEBlock_seq_two_stage, self).__init__(**kwargs)
+        super(CSA_Temporal, self).__init__(**kwargs)
         self.seq1, self.seq2 = seq1, seq2
         self.reduction = reduction
         self.global_avg_pool = layers.GlobalAvgPool1D(data_format="channels_first")
@@ -89,7 +89,7 @@ class SEBlock_seq_two_stage(layers.Layer):
         return output1, output2
 
     def get_config(self):
-        config = super(SEBlock_seq_two_stage, self).get_config()
+        config = super(CSA_Temporal, self).get_config()
         config.update({"seq1": self.seq1, "seq2": self.seq2, "reduction": self.reduction})
         return config
 
@@ -112,7 +112,7 @@ def create_model(input_a_shape, input_b_shape, weight=1e-2):
     x2 = layers.Conv1D(filter_config[0], 11, padding="same", activation="relu", kernel_initializer="he_normal",
                        kernel_regularizer=regularizers.L2(weight))(input2)
     x2 = layers.BatchNormalization()(x2)
-    x1, x2 = SEBlock_two_stage(channels=filter_config[0], reduction=4)(x1, x2)
+    x1, x2 = CSA_Channel(channels=filter_config[0], reduction=4)(x1, x2)
 
     # --- Shared Block 2 ---
     x1 = layers.Conv1D(filter_config[1], 11, strides=2, padding="same", activation="relu",
@@ -123,7 +123,7 @@ def create_model(input_a_shape, input_b_shape, weight=1e-2):
                        kernel_initializer="he_normal", kernel_regularizer=regularizers.L2(weight))(x2)
     x2 = layers.BatchNormalization()(x2)
     x2 = layers.MaxPooling1D(pool_size=3, padding="same")(x2)
-    x1, x2 = SEBlock_two_stage(channels=filter_config[1], reduction=4)(x1, x2)
+    x1, x2 = CSA_Channel(channels=filter_config[1], reduction=4)(x1, x2)
 
     # --- Shared Block 3 with Sequence Attention ---
     x1 = layers.Conv1D(filter_config[2], 11, padding="same", activation="relu", kernel_initializer="he_normal",
@@ -134,7 +134,7 @@ def create_model(input_a_shape, input_b_shape, weight=1e-2):
                        kernel_regularizer=regularizers.L2(weight))(x2)
     x2 = layers.BatchNormalization()(x2)
     x2 = layers.MaxPooling1D(pool_size=2, padding="same")(x2)
-    x1, x2 = SEBlock_seq_two_stage(seq1=x1.shape[1], seq2=x2.shape[1], reduction=4)(x1, x2)
+    x1, x2 = CSA_Temporal(seq1=x1.shape[1], seq2=x2.shape[1], reduction=4)(x1, x2)
 
     # --- Shared Block 4 with Sequence Attention ---
     x1 = layers.Conv1D(filter_config[3], 11, padding="same", activation="relu", kernel_initializer="he_normal",
@@ -145,7 +145,7 @@ def create_model(input_a_shape, input_b_shape, weight=1e-2):
                        kernel_regularizer=regularizers.L2(weight))(x2)
     x2 = layers.BatchNormalization()(x2)
     x2 = layers.MaxPooling1D(pool_size=3, padding="same")(x2)
-    x1, x2 = SEBlock_seq_two_stage(seq1=x1.shape[1], seq2=x2.shape[1], reduction=2)(x1, x2)
+    x1, x2 = CSA_Temporal(seq1=x1.shape[1], seq2=x2.shape[1], reduction=2)(x1, x2)
 
     # --- Feature Aggregation and Combination ---
     x1 = layers.GlobalAveragePooling1D()(x1)
